@@ -1,13 +1,14 @@
 import { Router } from 'express';
+import { createTask, getUserTasks, getTaskById } from '../controllers/taskController.js';
+import { protect } from '../middleware/authMiddleware.js';
 
 const router = Router();
 
-router.post('/', (req, res) => {
-  res.json({ message: 'Task endpoint ready for creation' });
-});
+// Protect all task endpoints with JWT middleware
+router.use(protect);
 
-router.get('/:id', (req, res) => {
-  res.json({ message: `Task endpoint ready for fetching task ${req.params.id}` });
-});
+router.post('/', createTask);
+router.get('/', getUserTasks);
+router.get('/:id', getTaskById);
 
 export default router;

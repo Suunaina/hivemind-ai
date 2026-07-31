@@ -41,8 +41,9 @@ app.get('/api/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/workspaces', workspaceRoutes);
+app.use('/api/tasks', taskRoutes);
 app.use('/api/v1/tasks', taskRoutes);
+app.use('/api/v1/workspaces', workspaceRoutes);
 app.use('/api/v1/agents', agentRoutes);
 
 // Global Error Handler
