@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bot, ArrowRight, Menu, X } from 'lucide-react';
+import { Bot, ArrowRight, Menu, X, LayoutDashboard, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '../../context/AuthContext';
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, isAuthenticated, logout } = useAuth();
 
   return (
     <motion.header
@@ -34,15 +36,43 @@ export default function Navbar() {
           </a>
         </nav>
 
-        {/* Get Started Action */}
+        {/* Auth CTA Actions */}
         <div className="hidden md:flex items-center gap-4">
-          <Link
-            to="/register"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:scale-105"
-          >
-            Get Started
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          {isAuthenticated ? (
+            <div className="flex items-center gap-3">
+              <Link
+                to="/dashboard"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:scale-105"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                Go to Dashboard
+              </Link>
+              <button
+                type="button"
+                onClick={logout}
+                className="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Link
+                to="/login"
+                className="text-sm font-medium text-slate-300 hover:text-white transition-colors px-3 py-2"
+              >
+                Sign In
+              </Link>
+              <Link
+                to="/register"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:scale-105"
+              >
+                Get Started
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Mobile Hamburger */}
@@ -69,12 +99,35 @@ export default function Navbar() {
             <a href="#about" className="text-sm font-medium text-slate-300 hover:text-white py-1">
               About
             </a>
-            <Link
-              to="/register"
-              className="text-center text-sm py-2.5 rounded-xl bg-indigo-600 text-white font-semibold mt-2"
-            >
-              Get Started
-            </Link>
+            {isAuthenticated ? (
+              <div className="flex flex-col gap-2 pt-2 border-t border-slate-800">
+                <span className="text-xs text-slate-400 px-1">Signed in as {user?.name}</span>
+                <Link
+                  to="/dashboard"
+                  className="text-center text-sm py-2.5 rounded-xl bg-indigo-600 text-white font-semibold"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={logout}
+                  className="text-center text-sm py-2 text-red-400 hover:text-red-300"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 pt-2 border-t border-slate-800">
+                <Link to="/login" className="text-center text-sm py-2 text-slate-300">
+                  Sign In
+                </Link>
+                <Link
+                  to="/register"
+                  className="text-center text-sm py-2.5 rounded-xl bg-indigo-600 text-white font-semibold"
+                >
+                  Get Started
+                </Link>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

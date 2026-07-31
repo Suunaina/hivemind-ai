@@ -1,17 +1,44 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import AuthLayout from '../components/auth/AuthLayout';
 import InputField from '../components/auth/InputField';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSubmit = (e) => {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
+
+    if (!email || !password) {
+      setErrorMessage('Please fill in all required fields.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await login(email, password);
+      navigate('/dashboard');
+    } catch (err) {
+      setIsSubmitting(false);
+      if (err.response?.data?.message) {
+        setErrorMessage(err.response.data.message);
+      } else if (err.message) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage('Unable to connect to server. Please check your internet connection.');
+      }
+    }
   };
 
   return (
@@ -20,6 +47,14 @@ export default function LoginPage() {
       subtitle="Sign in to your HiveMind AI workspace"
     >
       <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
+        {/* Error Alert Box */}
+        {errorMessage && (
+          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-start gap-2 animate-shake">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         <InputField
           label="Email Address"
           type="email"
@@ -70,13 +105,23 @@ export default function LoginPage() {
           </a>
         </div>
 
-        {/* Login Button */}
+        {/* Submit Button */}
         <button
           type="submit"
-          className="w-full mt-4 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.01] active:scale-[0.99]"
+          disabled={isSubmitting}
+          className="w-full mt-4 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:scale-100 disabled:cursor-not-allowed"
         >
-          Sign In
-          <ArrowRight className="w-4 h-4" />
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
+              Authenticating...
+            </>
+          ) : (
+            <>
+              Sign In
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
       </form>
 
