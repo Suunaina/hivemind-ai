@@ -1,0 +1,11 @@
+{
+  "name": "hivemind-ai-workspace",
+  "version": "1.0.0",
+  "description": "HiveMind AI - Autonomous Multi-Agent Collaborative AI Workspace",
+  "private": true,
+  "scripts": {
+    "dev:client": "npm run dev --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "build:client": "npm run build --prefix client"
+  }
+}
