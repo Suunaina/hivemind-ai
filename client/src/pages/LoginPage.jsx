@@ -1,60 +1,92 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bot, Mail, Lock, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import AuthLayout from '../components/auth/AuthLayout';
+import InputField from '../components/auth/InputField';
 
 export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+  };
+
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center px-6">
-      <div className="w-full max-w-md glass-panel p-8 rounded-2xl border border-slate-800 shadow-2xl">
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="p-3 rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 mb-3">
-            <Bot className="w-8 h-8" />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-100">Welcome Back</h2>
-          <p className="text-sm text-slate-400 mt-1">Sign in to your HiveMind AI workspace</p>
+    <AuthLayout
+      title="Welcome Back"
+      subtitle="Sign in to your HiveMind AI workspace"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
+        <InputField
+          label="Email Address"
+          type="email"
+          placeholder="name@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          icon={Mail}
+          required
+        />
+
+        <InputField
+          label="Password"
+          type={showPassword ? 'text' : 'password'}
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          icon={Lock}
+          required
+          endAction={
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="p-1 text-slate-400 hover:text-slate-200 focus:outline-none"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          }
+        />
+
+        {/* Remember Me & Forgot Password */}
+        <div className="flex items-center justify-between text-xs pt-1">
+          <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-indigo-500/40 focus:ring-offset-0"
+            />
+            Remember me
+          </label>
+          <a
+            href="#forgot-password"
+            onClick={(e) => e.preventDefault()}
+            className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+          >
+            Forgot Password?
+          </a>
         </div>
 
-        <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">Email Address</label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-              <input
-                type="email"
-                placeholder="name@example.com"
-                className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-            </div>
-          </div>
+        {/* Login Button */}
+        <button
+          type="submit"
+          className="w-full mt-4 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.01] active:scale-[0.99]"
+        >
+          Sign In
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </form>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-              <input
-                type="password"
-                placeholder="••••••••"
-                className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/25 transition-all"
-          >
-            Sign In
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </form>
-
-        <p className="text-xs text-center text-slate-400 mt-6">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-indigo-400 hover:underline font-medium">
-            Create one
-          </Link>
-        </p>
-      </div>
-    </div>
+      {/* Register Link */}
+      <p className="text-xs text-center text-slate-400 mt-6 relative z-10">
+        Don't have an account?{' '}
+        <Link to="/register" className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors">
+          Create one
+        </Link>
+      </p>
+    </AuthLayout>
   );
 }
