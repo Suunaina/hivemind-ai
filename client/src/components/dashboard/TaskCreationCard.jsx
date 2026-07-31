@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Sparkles, ArrowRight, Wand2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles, ArrowRight, Wand2, Loader2, AlertCircle, Brain, Search, Code, ShieldCheck, CheckCircle2, Copy, Check } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { useAuth } from '../../context/AuthContext';
+import { createTask } from '../../services/taskService';
 
 const promptPresets = [
   'Build REST API microservice',
@@ -18,6 +21,58 @@ const exampleHelpers = [
 
 export default function TaskCreationCard() {
   const [taskPrompt, setTaskPrompt] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [taskResult, setTaskResult] = useState(null);
+  const [activeTab, setActiveTab] = useState('planner');
+  const [copied, setCopied] = useState(false);
+
+  const { token } = useAuth();
+
+  const handleGeneratePlan = async () => {
+    if (!taskPrompt || taskPrompt.trim().length === 0) {
+      setError('Please enter a task prompt before generating.');
+      return;
+    }
+
+    if (!token) {
+      setError('Authentication token missing. Please sign in to submit tasks.');
+      return;
+    }
+
+    try {
+      setError('');
+      setIsProcessing(true);
+      setTaskResult(null);
+
+      const response = await createTask(taskPrompt.trim(), token);
+
+      if (response.success && response.data) {
+        setTaskResult(response.data);
+        setActiveTab('planner');
+      } else {
+        setError(response.message || 'Failed to process task. Please try again.');
+      }
+    } catch (err) {
+      console.error('Task execution error:', err);
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'An error occurred while executing AI swarm agents.';
+      setError(msg);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    if (text) {
+      navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <motion.section
@@ -52,22 +107,41 @@ export default function TaskCreationCard() {
             </span>
           </div>
 
+          {/* Error Alert Toast */}
+          {error && (
+            <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start gap-2.5 animate-shake">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+              <div className="flex-1">
+                <span className="font-semibold block mb-0.5">Execution Error</span>
+                <span>{error}</span>
+              </div>
+            </div>
+          )}
+
           {/* Large Textarea with Focus Glow */}
           <div className="relative flex flex-col gap-2">
             <textarea
               rows={4}
               value={taskPrompt}
-              onChange={(e) => setTaskPrompt(e.target.value)}
+              onChange={(e) => {
+                setTaskPrompt(e.target.value);
+                if (error) setError('');
+              }}
+              disabled={isProcessing}
               placeholder="Describe your task in detail..."
-              className="w-full bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 text-sm sm:text-base text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/40 transition-all resize-none shadow-inner"
+              className="w-full bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 text-sm sm:text-base text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/40 transition-all resize-none shadow-inner disabled:opacity-60 disabled:cursor-not-allowed"
             />
             
             {/* Low Opacity Helper Examples */}
-            {!taskPrompt && (
+            {!taskPrompt && !isProcessing && (
               <div className="px-1 text-[11px] text-slate-500/70 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono">
                 <span className="text-slate-600 font-sans font-medium">Examples:</span>
                 {exampleHelpers.map((ex, i) => (
-                  <span key={i} className="hover:text-slate-400 cursor-pointer transition-colors" onClick={() => setTaskPrompt(ex)}>
+                  <span
+                    key={i}
+                    className="hover:text-slate-400 cursor-pointer transition-colors"
+                    onClick={() => setTaskPrompt(ex)}
+                  >
                     • {ex}
                   </span>
                 ))}
@@ -83,8 +157,9 @@ export default function TaskCreationCard() {
                 <button
                   key={preset}
                   type="button"
+                  disabled={isProcessing}
                   onClick={() => setTaskPrompt(preset)}
-                  className="px-3 py-1 rounded-xl glass-card text-xs text-slate-300 hover:text-white hover:border-purple-500/40 transition-colors"
+                  className="px-3 py-1 rounded-xl glass-card text-xs text-slate-300 hover:text-white hover:border-purple-500/40 transition-colors disabled:opacity-50"
                 >
                   + {preset}
                 </button>
@@ -93,15 +168,137 @@ export default function TaskCreationCard() {
 
             <button
               type="button"
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-600/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              onClick={handleGeneratePlan}
+              disabled={isProcessing}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-600/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 disabled:opacity-75 disabled:cursor-not-allowed"
             >
-              <Sparkles className="w-4 h-4 text-purple-200" />
-              Generate Plan
-              <ArrowRight className="w-4 h-4" />
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-purple-200" />
+                  Running AI Agents...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-purple-200" />
+                  Generate Plan
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </div>
+
+          {/* Processing Progress Status Indicator */}
+          {isProcessing && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-4 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center gap-3 text-xs text-indigo-300"
+            >
+              <Loader2 className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
+              <div>
+                <span className="font-semibold block text-slate-200">Swarm Orchestration in Progress</span>
+                <span className="text-slate-400">
+                  Executing Planner → Researcher → Developer → Reviewer with Gemini AI...
+                </span>
+              </div>
+            </motion.div>
+          )}
         </div>
       </div>
+
+      {/* Swarm Execution Results Viewer */}
+      <AnimatePresence>
+        {taskResult && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mt-8 p-6 sm:p-8 rounded-3xl glass-panel border border-indigo-500/30 shadow-2xl"
+          >
+            {/* Header Result Badge */}
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-lg font-bold text-slate-100">Swarm Task Output</h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
+                  Completed
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => copyToClipboard(taskResult[`${activeTab}Output`])}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-card text-xs font-medium text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 transition-colors"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                {copied ? 'Copied!' : 'Copy Section'}
+              </button>
+            </div>
+
+            {/* Agent Output Tabs */}
+            <div className="flex flex-wrap items-center gap-2 mb-6 border-b border-slate-800/80 pb-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('planner')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  activeTab === 'planner'
+                    ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                }`}
+              >
+                <Brain className="w-4 h-4 text-blue-400" />
+                1. Planner Output
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('researcher')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  activeTab === 'researcher'
+                    ? 'bg-amber-600/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                }`}
+              >
+                <Search className="w-4 h-4 text-amber-400" />
+                2. Researcher Output
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('developer')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  activeTab === 'developer'
+                    ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                }`}
+              >
+                <Code className="w-4 h-4 text-emerald-400" />
+                3. Developer Output
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('reviewer')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  activeTab === 'reviewer'
+                    ? 'bg-purple-600/20 text-purple-300 border border-purple-500/40 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-purple-400" />
+                4. Reviewer Output
+              </button>
+            </div>
+
+            {/* Markdown Output Display */}
+            <div className="p-6 rounded-2xl bg-slate-950/80 border border-slate-800/90 max-h-[600px] overflow-y-auto font-sans text-sm text-slate-200 leading-relaxed space-y-4 prose prose-invert max-w-none">
+              <ReactMarkdown>
+                {taskResult[`${activeTab}Output`] || 'No output generated for this section.'}
+              </ReactMarkdown>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.section>
   );
 }

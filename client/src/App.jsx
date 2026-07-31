@@ -45,6 +45,22 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/task/:id"
+              element={
+                <ProtectedRoute>
+                  <TaskHistoryPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tasks/:id"
+              element={
+                <ProtectedRoute>
+                  <TaskHistoryPage />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </div>
       </Router>
