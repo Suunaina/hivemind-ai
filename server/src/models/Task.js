@@ -32,6 +32,10 @@ const taskSchema = new mongoose.Schema(
     reviewerOutput: {
       type: String,
       required: true
+    },
+    blueprint: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
     }
   },
   {

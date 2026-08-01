@@ -17,7 +17,7 @@ export const createTask = async (req, res) => {
     }
 
     // 2. Execute AI Swarm Agents via orchestrationService
-    const { planner, researcher, developer, reviewer } = await runAgents(prompt.trim());
+    const { planner, researcher, developer, reviewer, blueprint } = await runAgents(prompt.trim());
 
     // 3. Save Task to MongoDB with status 'completed'
     const task = await Task.create({
@@ -27,7 +27,8 @@ export const createTask = async (req, res) => {
       plannerOutput: planner,
       researcherOutput: researcher,
       developerOutput: developer,
-      reviewerOutput: reviewer
+      reviewerOutput: reviewer,
+      blueprint: blueprint || null
     });
 
     // 4. Return Created Task Object

@@ -16,6 +16,7 @@ export const runAgents = async (userPrompt) => {
   }
 
   let planner;
+  let blueprint;
   let researcher;
   let developer;
   let reviewer;
@@ -23,7 +24,9 @@ export const runAgents = async (userPrompt) => {
   // 1. Planner Execution
   try {
     console.log('🧠 Planner started...');
-    planner = await runPlannerAgent(userPrompt);
+    const plannerResult = await runPlannerAgent(userPrompt);
+    planner = typeof plannerResult === 'string' ? plannerResult : plannerResult.plannerOutput;
+    blueprint = typeof plannerResult === 'object' ? plannerResult.blueprint : null;
     console.log('✅ Planner completed');
   } catch (error) {
     console.error('❌ Planner Agent Error:', error.message);
@@ -64,6 +67,7 @@ export const runAgents = async (userPrompt) => {
     planner,
     researcher,
     developer,
-    reviewer
+    reviewer,
+    blueprint
   };
 };
