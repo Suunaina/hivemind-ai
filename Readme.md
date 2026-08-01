@@ -1,5 +1,17 @@
 # 🚀 HiveMind AI
 
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=node.js&logoColor=white)
+![Express.js](https://img.shields.io/badge/Express.js-Backend-000000?logo=express)
+![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini-AI-4285F4?logo=google&logoColor=white)
+![JWT](https://img.shields.io/badge/JWT-Authentication-000000?logo=jsonwebtokens)
+![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Framer Motion](https://img.shields.io/badge/Framer-Motion-0055FF?logo=framer)
+![Vercel](https://img.shields.io/badge/Vercel-Deployed-000000?logo=vercel)
+![Render](https://img.shields.io/badge/Render-Backend-46E3B7?logo=render&logoColor=white)
+
 > Learn software engineering through AI-guided project blueprints.
 
 🌐 **Live Demo: ** https://hivemind-ai-five.vercel.app
