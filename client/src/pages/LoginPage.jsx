@@ -27,8 +27,12 @@ export default function LoginPage() {
 
     try {
       setIsSubmitting(true);
-      await login(email, password);
-      navigate('/dashboard');
+      const resData = await login(email, password);
+      if (resData && resData.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       setIsSubmitting(false);
       if (err.response?.data?.message) {

@@ -45,17 +45,8 @@ export default function DashboardNavbar() {
           <span>All Agents Online</span>
         </div>
 
-        {/* Right: Notifications & User Profile */}
+        {/* Right: User Profile */}
         <div className="flex items-center gap-4">
-          <button
-            type="button"
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors relative"
-            aria-label="Notifications"
-          >
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-purple-500" />
-          </button>
-
           {/* User Profile Avatar & Details */}
           <div className="flex items-center gap-3 pl-3 border-l border-slate-800/80">
             <motion.div whileHover={{ scale: 1.02 }} className="flex items-center gap-2.5">

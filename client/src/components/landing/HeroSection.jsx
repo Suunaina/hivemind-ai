@@ -14,7 +14,7 @@ export default function HeroSection() {
         transition={{ duration: 0.5 }}
         className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-panel text-xs font-semibold text-indigo-300 border border-indigo-500/30 mb-8"
       >
-        <span>✨ Multi-Agent AI Workspace</span>
+        <span>🧩 AI Project Mentor</span>
       </motion.div>
 
       {/* Main Headline */}
@@ -36,7 +36,7 @@ export default function HeroSection() {
         transition={{ duration: 0.6, delay: 0.2 }}
         className="text-lg sm:text-xl text-slate-400 max-w-2xl mb-10 leading-relaxed font-normal"
       >
-        An AI workspace where specialized agents collaborate to solve complex tasks.
+        Learn software engineering through AI-guided project blueprints.
       </motion.p>
 
       {/* Hero CTA Buttons */}

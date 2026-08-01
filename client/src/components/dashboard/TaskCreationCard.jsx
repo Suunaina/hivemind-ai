@@ -4,6 +4,8 @@ import { Sparkles, ArrowRight, Wand2, Loader2, AlertCircle, Brain, Search, Code,
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '../../context/AuthContext';
 import { createTask } from '../../services/taskService';
+import AILoadingTimeline from '../common/AILoadingTimeline';
+import ErrorCard from '../common/ErrorCard';
 
 const promptPresets = [
   'Build REST API microservice',
@@ -21,15 +23,32 @@ const exampleHelpers = [
 
 export default function TaskCreationCard() {
   const [taskPrompt, setTaskPrompt] = useState('');
+  const [experienceLevel, setExperienceLevel] = useState('Intermediate');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
   const [taskResult, setTaskResult] = useState(null);
   const [activeTab, setActiveTab] = useState('planner');
   const [copied, setCopied] = useState(false);
 
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    const firstName = user?.name ? user.name.split(' ')[0] : 'Developer';
+
+    let timeGreeting = 'Good Morning';
+    if (hour >= 12 && hour < 17) {
+      timeGreeting = 'Good Afternoon';
+    } else if (hour >= 17) {
+      timeGreeting = 'Good Evening';
+    }
+
+    return `${timeGreeting}, ${firstName}`;
+  };
 
   const handleGeneratePlan = async () => {
+    if (isProcessing) return;
+
     if (!taskPrompt || taskPrompt.trim().length === 0) {
       setError('Please enter a task prompt before generating.');
       return;
@@ -45,7 +64,7 @@ export default function TaskCreationCard() {
       setIsProcessing(true);
       setTaskResult(null);
 
-      const response = await createTask(taskPrompt.trim(), token);
+      const response = await createTask(taskPrompt.trim(), experienceLevel, token);
 
       if (response.success && response.data) {
         setTaskResult(response.data);
@@ -84,15 +103,18 @@ export default function TaskCreationCard() {
       {/* Greeting Section */}
       <div className="mb-6">
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight flex items-center gap-2">
-          Welcome back <span className="text-2xl">👋</span>
+          {getGreeting()} <span className="text-2xl">👋</span>
         </h1>
         <p className="text-sm sm:text-base text-slate-400 mt-1">
-          What would you like your AI team to accomplish today?
+          Ready to continue your learning journey? Let's build something amazing today.
         </p>
       </div>
 
       {/* Task Creation Card */}
-      <div className="p-6 sm:p-8 rounded-3xl glass-panel border border-slate-800 shadow-2xl relative overflow-hidden">
+      {isProcessing ? (
+        <AILoadingTimeline prompt={taskPrompt} />
+      ) : (
+        <div className="p-6 sm:p-8 rounded-3xl glass-panel border border-slate-800 shadow-2xl relative overflow-hidden">
         {/* Glow Accent */}
         <div className="absolute top-0 right-0 w-72 h-72 bg-purple-500/10 blur-3xl rounded-full pointer-events-none" />
 
@@ -149,6 +171,42 @@ export default function TaskCreationCard() {
             )}
           </div>
 
+          {/* Student Experience Level Selector */}
+          <div className="space-y-2 pt-1 border-t border-slate-800/60">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Brain className="w-3.5 h-3.5 text-cyan-400" />
+                Select Experience Level:
+              </span>
+              <span className="text-[11px] font-mono text-slate-400">
+                Tailors blueprint depth & guidance style
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {[
+                { id: 'Beginner', label: '🟢 Beginner', desc: 'Detailed analogies & step-by-step guidance' },
+                { id: 'Intermediate', label: '🟡 Intermediate', desc: 'Architecture & decision trade-off focus' },
+                { id: 'Advanced', label: '🔴 Advanced', desc: 'Scalability, security & design patterns' }
+              ].map((lvl) => (
+                <button
+                  key={lvl.id}
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => setExperienceLevel(lvl.id)}
+                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                    experienceLevel === lvl.id
+                      ? 'bg-slate-900 border-cyan-500/50 shadow-md ring-1 ring-cyan-500/30'
+                      : 'bg-slate-950/50 border-slate-800/80 hover:border-slate-700 opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <div className="text-xs font-bold text-white mb-0.5">{lvl.label}</div>
+                  <div className="text-[10px] text-slate-400 line-clamp-1">{lvl.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Preset Buttons & Primary CTA */}
           <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -186,25 +244,9 @@ export default function TaskCreationCard() {
               )}
             </button>
           </div>
-
-          {/* Processing Progress Status Indicator */}
-          {isProcessing && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center gap-3 text-xs text-indigo-300"
-            >
-              <Loader2 className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
-              <div>
-                <span className="font-semibold block text-slate-200">Swarm Orchestration in Progress</span>
-                <span className="text-slate-400">
-                  Executing Planner → Researcher → Developer → Reviewer with Gemini AI...
-                </span>
-              </div>
-            </motion.div>
-          )}
         </div>
       </div>
+      )}
 
       {/* Swarm Execution Results Viewer */}
       <AnimatePresence>

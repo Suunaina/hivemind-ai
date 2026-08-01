@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createTask, getUserTasks, getTaskById } from '../controllers/taskController.js';
+import { createTask, getUserTasks, getTaskById, askMentor, updateTaskProgress } from '../controllers/taskController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = Router();
@@ -10,5 +10,7 @@ router.use(protect);
 router.post('/', createTask);
 router.get('/', getUserTasks);
 router.get('/:id', getTaskById);
+router.post('/:id/mentor', askMentor);
+router.patch('/:id/progress', updateTaskProgress);
 
 export default router;

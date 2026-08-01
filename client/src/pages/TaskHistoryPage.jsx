@@ -1,53 +1,40 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   ArrowLeft,
   Clock,
-  CheckCircle2,
   AlertCircle,
-  Loader2,
   Sparkles,
-  Layers,
   Compass,
   BookOpen,
   Hammer,
   Rocket,
-  ChevronDown,
-  ChevronUp,
-  Lock,
-  BarChart2,
-  Award,
-  Check,
-  Copy,
-  Brain,
-  HelpCircle,
-  FileText,
-  Code2,
   Server,
   KeyRound,
   ShieldAlert,
   Zap,
-  Lightbulb,
-  ExternalLink,
-  Trophy,
-  ArrowRight,
-  FolderGit2,
-  CheckSquare,
-  Play,
+  Code2,
   ShieldCheck,
-  Eye,
-  CheckCircle,
-  Activity,
-  ZapOff
+  CheckCircle
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import DashboardNavbar from '../components/dashboard/DashboardNavbar';
 import AnimatedBackground from '../components/landing/AnimatedBackground';
 import { useAuth } from '../context/AuthContext';
-import { getTaskById } from '../services/taskService';
+import { getTaskById, unlockAchievement, updateTaskProgress } from '../services/taskService';
 
+// Import refactored Project Blueprint subcomponents
+import ProjectSnapshot from '../components/projectBlueprint/ProjectSnapshot';
+import StageNavigation from '../components/projectBlueprint/StageNavigation';
+import ProgressDashboard from '../components/projectBlueprint/ProgressDashboard';
+import UnderstandStage from '../components/projectBlueprint/UnderstandStage';
+import LearnStage from '../components/projectBlueprint/LearnStage';
+import BuildStage from '../components/projectBlueprint/BuildStage';
+import ImproveStage from '../components/projectBlueprint/ImproveStage';
+import AskHiveModal from '../components/projectBlueprint/AskHiveModal';
+import AchievementsPanel from '../components/projectBlueprint/AchievementsPanel';
+import AchievementUnlockedToast from '../components/projectBlueprint/AchievementUnlockedToast';
+import ErrorCard from '../components/common/ErrorCard';
 
 export default function TaskHistoryPage() {
   const { taskId, id } = useParams();
@@ -58,8 +45,11 @@ export default function TaskHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Active Stage Navigation: 'understand', 'learn', or 'build'
+  // Active Stage Navigation: 'understand', 'learn', 'build', or 'improve'
   const [activeStage, setActiveStage] = useState('understand');
+  
+  // AI Mentor Floating Modal State
+  const [isAskHiveOpen, setIsAskHiveOpen] = useState(false);
   
   // Understand Section State
   const [isArchitectureOpen, setIsArchitectureOpen] = useState(false);
@@ -94,13 +84,13 @@ export default function TaskHistoryPage() {
     chk6: false
   });
 
-  // Show notification toasts
-  const [showBuildToast, setShowBuildToast] = useState(false);
-  const [showImproveToast, setShowImproveToast] = useState(false);
+  // Achievement Unlock Toast State
+  const [unlockedBadgeToast, setUnlockedBadgeToast] = useState(null);
 
   useEffect(() => {
     const fetchTaskDetails = async () => {
-      if (!targetId || !token) {
+      const activeToken = token || localStorage.getItem('hivemind_token');
+      if (!targetId || !activeToken) {
         setError('Task ID or authentication session missing.');
         setLoading(false);
         return;
@@ -109,10 +99,21 @@ export default function TaskHistoryPage() {
       try {
         setLoading(true);
         setError('');
-        const res = await getTaskById(targetId, token);
+        const res = await getTaskById(targetId, activeToken);
 
         if (res.success && res.data) {
           setTask(res.data);
+          // Restore progress state from MongoDB if present
+          if (res.data.progressState) {
+            const ps = res.data.progressState;
+            if (ps.activeStage) setActiveStage(ps.activeStage);
+            if (Array.isArray(ps.milestones) && ps.milestones.length > 0) setMilestones(ps.milestones);
+            if (Array.isArray(ps.viewedCards)) setViewedCards(new Set(ps.viewedCards));
+            if (ps.completedPhases) setCompletedPhases(ps.completedPhases);
+            if (ps.completedImproveCards) setCompletedImproveCards(ps.completedImproveCards);
+            if (ps.expandedTips) setExpandedTips(ps.expandedTips);
+            if (ps.deployChecklist) setDeployChecklist(ps.deployChecklist);
+          }
         } else {
           setError(res.message || 'Task not found.');
         }
@@ -128,6 +129,43 @@ export default function TaskHistoryPage() {
 
     fetchTaskDetails();
   }, [targetId, token]);
+
+  // Persist progress changes to MongoDB
+  useEffect(() => {
+    const activeToken = token || localStorage.getItem('hivemind_token');
+    if (!targetId || !activeToken || loading || !task) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const progressObj = {
+          activeStage,
+          milestones,
+          viewedCards: Array.from(viewedCards),
+          completedPhases,
+          completedImproveCards,
+          expandedTips,
+          deployChecklist
+        };
+        await updateTaskProgress(targetId, progressObj, activeToken);
+      } catch (err) {
+        console.error('Failed to auto-save progress:', err);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [
+    activeStage,
+    milestones,
+    viewedCards,
+    completedPhases,
+    completedImproveCards,
+    expandedTips,
+    deployChecklist,
+    targetId,
+    token,
+    loading,
+    task
+  ]);
 
   const toggleMilestone = (id) => {
     setMilestones((prev) =>
@@ -205,7 +243,7 @@ export default function TaskHistoryPage() {
     });
   };
 
-  // Learning Journey Stages Definition (All 4 Stages Available in Sprint 4!)
+  // Learning Journey Stages Definition
   const journeyStages = [
     {
       id: 'understand',
@@ -246,7 +284,7 @@ export default function TaskHistoryPage() {
   ];
 
   // Dynamic AI Extractor for HiveMind Phase 3
-  const blueprintData = React.useMemo(() => {
+  const blueprintData = useMemo(() => {
     const defaultConcepts = [
       {
         id: 'c1',
@@ -499,7 +537,7 @@ export default function TaskHistoryPage() {
   }, [task]);
 
   // 1. Snapshot Data binding with fallback
-  const snapshotData = React.useMemo(() => {
+  const snapshotData = useMemo(() => {
     if (task?.blueprint?.snapshot) {
       const snap = task.blueprint.snapshot;
       let badgeColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
@@ -534,7 +572,7 @@ export default function TaskHistoryPage() {
   }, [task, blueprintData]);
 
   // 2. Stage 1 (Understand) Data binding with fallback
-  const understandData = React.useMemo(() => {
+  const understandData = useMemo(() => {
     if (task?.blueprint?.understand) {
       const u = task.blueprint.understand;
       return {
@@ -569,7 +607,7 @@ export default function TaskHistoryPage() {
   }, [task]);
 
   // 3. Stage 2 (Learn) Concept Cards Data binding with fallback
-  const learnConceptCards = React.useMemo(() => {
+  const learnConceptCards = useMemo(() => {
     if (Array.isArray(task?.blueprint?.learn) && task.blueprint.learn.length > 0) {
       const icons = [Server, KeyRound, ShieldAlert, Zap, Code2];
       const colors = [
@@ -601,7 +639,7 @@ export default function TaskHistoryPage() {
   }, [task, blueprintData]);
 
   // 4. Stage 3 (Build) Phase Cards Data binding with fallback
-  const buildPhasesData = React.useMemo(() => {
+  const buildPhasesData = useMemo(() => {
     if (Array.isArray(task?.blueprint?.build) && task.blueprint.build.length > 0) {
       return task.blueprint.build.slice(0, 5).map((item, idx) => {
         const diff = item.difficulty || (idx === 0 ? 'Beginner' : idx < 4 ? 'Intermediate' : 'Advanced');
@@ -628,9 +666,9 @@ export default function TaskHistoryPage() {
   }, [task, blueprintData]);
 
   // 5. Stage 4 (Improve) Improvement Cards Data binding with fallback
-  const improvementCards = React.useMemo(() => {
+  const improvementCards = useMemo(() => {
     if (Array.isArray(task?.blueprint?.improve) && task.blueprint.improve.length > 0) {
-      const icons = [Zap, ShieldCheck, CheckCircle, Eye, Rocket];
+      const icons = [Zap, ShieldCheck, CheckCircle, Rocket, ShieldAlert];
       const themes = [
         { badge: 'Performance Audit', text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
         { badge: 'Security Audit', text: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
@@ -713,7 +751,7 @@ export default function TaskHistoryPage() {
         id: 'imp4',
         category: 'Usability Audit',
         title: '♿ Accessibility & UX Polish',
-        IconComponent: Eye,
+        IconComponent: ShieldCheck,
         iconColor: 'text-emerald-400',
         accentBg: 'bg-emerald-500/10',
         accentBorder: 'border-emerald-500/20',
@@ -746,14 +784,17 @@ export default function TaskHistoryPage() {
     ];
   }, [task]);
 
-  // All concept cards viewed check for Stage 2 Completion Banner
-  const isStage2Complete = viewedCards.size >= learnConceptCards.length;
+  // Stage 1 Completion Check
+  const isStage1Complete = milestones && milestones.length > 0 && milestones.every((m) => m.completed);
 
-  // Build Phase Stats Calculation
+  // Stage 2 Concept Cards Completion Check
+  const isStage2Complete = learnConceptCards.length > 0 && viewedCards.size >= learnConceptCards.length;
+
+  // Stage 3 Build Phase Stats Calculation
   const completedBuildPhasesCount = Object.values(completedPhases).filter(Boolean).length;
   const totalBuildPhases = buildPhasesData.length;
-  const isBuildComplete = completedBuildPhasesCount === totalBuildPhases;
-  const buildProgressPercentage = Math.round((completedBuildPhasesCount / totalBuildPhases) * 100);
+  const isBuildComplete = totalBuildPhases > 0 && completedBuildPhasesCount === totalBuildPhases;
+  const buildProgressPercentage = totalBuildPhases > 0 ? Math.round((completedBuildPhasesCount / totalBuildPhases) * 100) : 0;
 
   const remainingBuildTimeMins = buildPhasesData
     .filter((p) => !completedPhases[p.id])
@@ -762,8 +803,30 @@ export default function TaskHistoryPage() {
   // Stage 4 Professional Polish Stats & Completion Check
   const completedImproveCount = Object.values(completedImproveCards).filter(Boolean).length;
   const totalImproveCards = improvementCards.length;
-  const isAllImproveCompleted = completedImproveCount === totalImproveCards;
-  const improveProgressPercentage = Math.round((completedImproveCount / totalImproveCards) * 100);
+  const isAllImproveCompleted = totalImproveCards > 0 && completedImproveCount === totalImproveCards;
+  const improveProgressPercentage = totalImproveCards > 0 ? Math.round((completedImproveCount / totalImproveCards) * 100) : 0;
+
+  // Automatic achievement unlock effect (declared safely after completion booleans)
+  useEffect(() => {
+    const activeToken = token || localStorage.getItem('hivemind_token');
+    if (!activeToken) return;
+
+    const checkAndUnlock = async (badgeId) => {
+      try {
+        const res = await unlockAchievement(badgeId, activeToken);
+        if (res.success && res.isNewUnlock && res.data?.badge) {
+          setUnlockedBadgeToast(res.data.badge);
+        }
+      } catch (err) {
+        console.error('Failed to unlock badge:', err);
+      }
+    };
+
+    if (isStage1Complete) checkAndUnlock('architecture_explorer');
+    if (isStage2Complete) checkAndUnlock('concept_master');
+    if (isBuildComplete) checkAndUnlock('builder');
+    if (isAllImproveCompleted) checkAndUnlock('production_ready');
+  }, [isStage1Complete, isStage2Complete, isBuildComplete, isAllImproveCompleted, token]);
 
   return (
     <div className="min-h-screen relative flex flex-col selection:bg-purple-500/30 selection:text-purple-200">
@@ -782,7 +845,7 @@ export default function TaskHistoryPage() {
           </Link>
 
           <span className="text-xs font-mono font-semibold px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-            Project Blueprint v3.0
+            Project Blueprint
           </span>
         </div>
 
@@ -802,20 +865,12 @@ export default function TaskHistoryPage() {
 
         {/* Error State */}
         {!loading && error && (
-          <div className="p-8 rounded-3xl glass-panel border border-red-500/30 text-center max-w-lg mx-auto my-12 shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4 text-red-400">
-              <AlertCircle className="w-6 h-6" />
-            </div>
-            <h2 className="text-lg font-bold text-slate-100 mb-2">Unable to Load Blueprint</h2>
-            <p className="text-xs text-slate-400 mb-6 leading-relaxed">{error}</p>
-            <Link
-              to="/dashboard"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-lg shadow-purple-600/25 transition-all"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Return to Dashboard
-            </Link>
-          </div>
+          <ErrorCard
+            errorType="generic"
+            title="Unable to Load Blueprint"
+            message={error}
+            onRetry={() => window.location.reload()}
+          />
         )}
 
         {/* Main Project Blueprint View */}
@@ -827,1261 +882,125 @@ export default function TaskHistoryPage() {
             className="space-y-8"
           >
             {/* SECTION 1: PROJECT SNAPSHOT HEADER */}
-            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 relative overflow-hidden shadow-2xl">
-              <div className="absolute -top-24 -right-24 w-72 h-72 bg-cyan-500/10 blur-3xl rounded-full pointer-events-none" />
-              <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-purple-500/10 blur-3xl rounded-full pointer-events-none" />
-
-              {/* Title & Badge Header */}
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-                <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-[11px] font-semibold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                    Project Blueprint
-                  </span>
-                  <span className="px-3 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-xs font-mono text-slate-400">
-                    ID: {task._id}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
-                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Created: {formatDate(task.createdAt)}</span>
-                </div>
-              </div>
-
-              {/* Project Title */}
-              <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-snug mb-6">
-                {task.prompt}
-              </h1>
-
-              {/* Metadata Snapshot Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 sm:p-5 rounded-2xl bg-slate-950/60 border border-slate-800/80">
-                {/* Difficulty */}
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                    <BarChart2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Difficulty
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                      <span className={`text-xs font-bold ${snapshotData.difficultyBadgeColor ? snapshotData.difficultyBadgeColor.split(' ')[0] : 'text-amber-300'}`}>
-                        {snapshotData.difficulty}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Estimated Time */}
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Estimated Time
-                    </div>
-                    <div className="text-xs font-bold text-slate-200 mt-0.5">
-                      {snapshotData.estimatedTime}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Prerequisites */}
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
-                    <Code2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                      Prerequisites
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {snapshotData.prerequisites.map((chip) => (
-                        <span
-                          key={chip}
-                          className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700/80 text-[11px] font-mono text-purple-300"
-                        >
-                          {chip}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* By the end you'll be able to... */}
-              <div className="space-y-2.5 pt-2 border-t border-slate-800/80">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                  <Award className="w-4 h-4 text-cyan-400" />
-                  By the end you'll be able to:
-                </div>
-                <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-300">
-                  {snapshotData.outcomes.slice(0, 3).map((outcome, idx) => (
-                    <li key={idx} className="flex items-start gap-2 bg-slate-900/40 p-2.5 rounded-xl border border-slate-800/60">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                      <span>{outcome}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+            <ProjectSnapshot
+              task={task}
+              snapshotData={snapshotData}
+              formatDate={formatDate}
+            />
 
             {/* SECTION 2: LEARNING JOURNEY NAVIGATION (STAGE TABS) */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-cyan-400" />
-                  Learning Journey Flow
-                </h2>
-                <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20">
-                  {activeStage === 'understand' ? 'Stage 1 Active' : activeStage === 'learn' ? 'Stage 2 Active' : 'Stage 3 Active'}
-                </span>
-              </div>
+            <StageNavigation
+              journeyStages={journeyStages}
+              activeStage={activeStage}
+              setActiveStage={setActiveStage}
+            />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {journeyStages.map((stage) => {
-                  const isCurrent = activeStage === stage.id;
-                  const isAvailable = stage.available;
-
-                  return (
-                    <button
-                      key={stage.id}
-                      type="button"
-                      disabled={!isAvailable}
-                      onClick={() => isAvailable && setActiveStage(stage.id)}
-                      className={`relative p-4 rounded-2xl border text-left transition-all ${
-                        isCurrent
-                          ? 'glass-panel bg-cyan-950/20 border-cyan-500/40 shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500/30'
-                          : isAvailable
-                          ? 'glass-panel hover:bg-slate-900/60 border-slate-800 cursor-pointer'
-                          : 'bg-slate-950/40 border-slate-800/80 opacity-50 cursor-not-allowed'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg">{stage.emoji}</span>
-                          <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                            isCurrent
-                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                              : 'bg-slate-900 text-slate-500 border border-slate-800'
-                          }`}>
-                            Stage {stage.number}
-                          </span>
-                        </div>
-
-                        {!isAvailable && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-500 bg-slate-900/80 px-2 py-0.5 rounded-md border border-slate-800">
-                            <Lock className="w-3 h-3" />
-                            {stage.badge}
-                          </span>
-                        )}
-                      </div>
-
-                      <h3 className={`text-sm font-bold tracking-tight ${isCurrent ? 'text-white' : 'text-slate-300'}`}>
-                        {stage.title}
-                      </h3>
-
-                      {isCurrent && (
-                        <div className="mt-2 pt-2 border-t border-cyan-500/20 flex items-center justify-between text-[11px] text-cyan-400 font-medium">
-                          <span>Currently Viewing</span>
-                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* SPRINT 2.5: LEARNING PROGRESS DASHBOARD */}
-            <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-slate-800 shadow-2xl space-y-6">
-              {/* 1. Animated Project Progress Bar */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Trophy className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                      Project Progress
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-cyan-300 bg-cyan-500/10 px-2.5 py-0.5 rounded-md border border-cyan-500/20">
-                      {progressPercentage}%
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-400">
-                      Stage {activeStage === 'understand' ? 1 : activeStage === 'learn' ? 2 : 3} of 4
-                    </span>
-                  </div>
-                </div>
-
-                {/* Progress Bar Track */}
-                <div className="h-3 rounded-full bg-slate-950/80 border border-slate-800/90 overflow-hidden p-0.5">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progressPercentage}%` }}
-                    transition={{ duration: 0.6, ease: 'easeOut' }}
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-emerald-400 shadow-md shadow-cyan-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* 2. Stage Tracker */}
-              <div className="pt-2 border-t border-slate-800/80 space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  Stage Progress Tracker
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                  {[
-                    {
-                      name: '1. Understand',
-                      completed: activeStage === 'learn' || activeStage === 'build' || completedMilestonesCount === 3,
-                      current: activeStage === 'understand'
-                    },
-                    {
-                      name: '2. Learn',
-                      completed: activeStage === 'build' || isStage2Complete,
-                      current: activeStage === 'learn'
-                    },
-                    {
-                      name: '3. Build',
-                      completed: isBuildComplete,
-                      current: activeStage === 'build'
-                    },
-                    {
-                      name: '4. Improve',
-                      completed: false,
-                      current: false
-                    }
-                  ].map((s) => (
-                    <div
-                      key={s.name}
-                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-medium ${
-                        s.completed
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                          : s.current
-                          ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-200 ring-1 ring-cyan-500/30 shadow-sm shadow-cyan-500/20'
-                          : 'bg-slate-950/40 border-slate-800 text-slate-500 opacity-60'
-                      }`}
-                    >
-                      {s.completed ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      ) : s.current ? (
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
-                      ) : (
-                        <Lock className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                      )}
-                      <span className="truncate">{s.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* 3. Learning Statistics */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2 border-t border-slate-800/80">
-                {/* Stat 1 */}
-                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/90 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
-                    <BookOpen className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      Concepts
-                    </div>
-                    <div className="text-xs font-bold text-white mt-0.5">
-                      4 Prerequisite Cards
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stat 2 */}
-                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/90 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      Estimated Time
-                    </div>
-                    <div className="text-xs font-bold text-white mt-0.5">
-                      9 Mins Total Read
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stat 3 */}
-                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/90 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                    <Award className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      Completion
-                    </div>
-                    <div className="text-xs font-bold text-emerald-300 mt-0.5">
-                      {progressPercentage}% Mastered
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Stage 2 Completion Banner */}
-            <AnimatePresence>
-              {isStage2Complete && activeStage === 'learn' && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.96, y: 12 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.96, y: -12 }}
-                  transition={{ duration: 0.4 }}
-                  className="p-6 sm:p-7 rounded-3xl glass-panel border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-slate-950 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-300 text-2xl shrink-0">
-                      🎉
-                    </div>
-                    <div className="space-y-0.5">
-                      <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                        Great job!
-                      </h3>
-                      <p className="text-xs text-slate-300 leading-relaxed">
-                        You're ready to begin building your project. You've explored every concept card.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveStage('build')}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 shrink-0 active:scale-95 cursor-pointer"
-                  >
-                    <span>Continue to Build Stage</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Toast Feedback */}
-            <AnimatePresence>
-              {showImproveToast && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="p-4 rounded-2xl bg-slate-900 border border-purple-500/40 text-xs text-purple-300 flex items-center justify-between gap-4 shadow-xl"
-                >
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-purple-400" />
-                    <span>Build Complete! Stage 4 (Improve Your Project) will unlock in the upcoming release.</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowImproveToast(false)}
-                    className="text-slate-400 hover:text-white font-bold"
-                  >
-                    ✕
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* LEARNING PROGRESS DASHBOARD */}
+            <ProgressDashboard
+              progressPercentage={progressPercentage}
+              activeStage={activeStage}
+              completedMilestonesCount={completedMilestonesCount}
+              isStage2Complete={isStage2Complete}
+              isBuildComplete={isBuildComplete}
+            />
 
             {/* STAGE 1 CONTENT: UNDERSTAND THE PROBLEM */}
             {activeStage === 'understand' && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-6"
-              >
-                {/* Stage Header */}
-                <div className="flex items-center gap-3 pb-2 border-b border-slate-800">
-                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-xl">
-                    🧩
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white tracking-tight">
-                      Stage 1: Understand the Problem
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      Grasp the core objective, explore task requirements, and prepare your mental model.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Objective Summary Card */}
-                <div className="glass-panel p-6 rounded-3xl border border-slate-800 shadow-xl space-y-3">
-                  <div className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-                    <Compass className="w-4 h-4" />
-                    Objective Summary
-                  </div>
-                  <p className="text-sm text-slate-200 leading-relaxed font-sans">
-                    {understandData.summary}
-                  </p>
-                </div>
-
-                {/* Beginner-Friendly Explanation Card */}
-                <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-                    <div className="flex items-center gap-2.5">
-                      <Brain className="w-5 h-5 text-purple-400" />
-                      <h3 className="text-base font-bold text-white tracking-tight">
-                        Beginner-Friendly Concept Breakdown
-                      </h3>
-                    </div>
-                    <span className="px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] font-semibold uppercase tracking-wider">
-                      Educational Scaffolding
-                    </span>
-                  </div>
-
-                  <div className="p-6 rounded-2xl bg-slate-950/80 border border-slate-800/90 text-sm text-slate-300 leading-relaxed overflow-x-auto">
-                    {task.plannerOutput ? (
-                      <div className="prose prose-invert max-w-none prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-800 prose-pre:rounded-xl prose-headings:text-slate-100 prose-headings:font-bold prose-p:text-slate-300 prose-a:text-cyan-400 prose-code:text-cyan-300 prose-code:bg-cyan-950/40 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-strong:text-white">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {task.plannerOutput}
-                        </ReactMarkdown>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">
-                        Break down the task into simple steps: 1) Identify input parameters, 2) Process logic securely, 3) Return expected output.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Three Milestone Checklist Card */}
-                <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl space-y-5">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-                    <div>
-                      <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                        Milestone Readiness Checklist
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Check off each step as you prepare your understanding before building.
-                      </p>
-                    </div>
-                    <div className="text-xs font-mono text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 font-semibold">
-                      {completedMilestonesCount} of {milestones.length} Completed
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {milestones.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => toggleMilestone(m.id)}
-                        className={`w-full flex items-center gap-3.5 p-4 rounded-2xl border transition-all text-left group active:scale-[0.99] ${
-                          m.completed
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
-                          m.completed
-                            ? 'bg-emerald-500 text-slate-950 font-bold'
-                            : 'border-2 border-slate-700 group-hover:border-emerald-400'
-                        }`}>
-                          {m.completed && <Check className="w-4 h-4 stroke-[3]" />}
-                        </div>
-                        <span className={`text-sm font-medium ${m.completed ? 'line-through opacity-80' : 'text-slate-200'}`}>
-                          {m.text}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* EXPANDABLE SECTION 1: SYSTEM ARCHITECTURE */}
-                <div className="glass-panel rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setIsArchitectureOpen((prev) => !prev)}
-                    className="w-full p-6 flex items-center justify-between text-left hover:bg-slate-900/40 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">📐</span>
-                      <div>
-                        <h3 className="text-base font-bold text-white tracking-tight">
-                          View System Architecture
-                        </h3>
-                        <p className="text-xs text-slate-400">
-                          Explore the high-level data flow and component layout.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400">
-                      {isArchitectureOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                    </div>
-                  </button>
-
-                  <AnimatePresence>
-                    {isArchitectureOpen && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="border-t border-slate-800/80 p-6 sm:p-8 bg-slate-950/60"
-                      >
-                        <div className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 text-center space-y-4">
-                          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-xs font-mono">
-                            Architecture Schema Placeholder
-                          </div>
-
-                          <div className="flex flex-wrap items-center justify-center gap-3 py-6 font-mono text-xs text-slate-300">
-                            <div className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 font-bold text-cyan-300">
-                              [ Client Request ]
-                            </div>
-                            <span className="text-cyan-400">───►</span>
-                            <div className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 font-bold text-purple-300">
-                              [ API Router / Middleware ]
-                            </div>
-                            <span className="text-purple-400">───►</span>
-                            <div className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 font-bold text-emerald-300">
-                              [ Controller / Data Service ]
-                            </div>
-                          </div>
-
-                          <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
-                            System Architecture diagram preview will render in upcoming updates. This visual map helps you trace how data travels from initial request to storage.
-                          </p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* EXPANDABLE SECTION 2: FULL GLOSSARY */}
-                <div className="glass-panel rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setIsGlossaryOpen((prev) => !prev)}
-                    className="w-full p-6 flex items-center justify-between text-left hover:bg-slate-900/40 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">📖</span>
-                      <div>
-                        <h3 className="text-base font-bold text-white tracking-tight">
-                          View Full Glossary
-                        </h3>
-                        <p className="text-xs text-slate-400">
-                          Reference key Computer Science terms and definitions.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400">
-                      {isGlossaryOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                    </div>
-                  </button>
-
-                  <AnimatePresence>
-                    {isGlossaryOpen && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="border-t border-slate-800/80 p-6 sm:p-8 bg-slate-950/60"
-                      >
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {understandData.glossary.map((item, idx) => (
-                            <div
-                              key={item.term || idx}
-                              className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1.5"
-                            >
-                              <div className="text-xs font-bold text-purple-300 font-mono">
-                                {item.term}
-                              </div>
-                              <p className="text-xs text-slate-300 leading-relaxed">
-                                {item.def}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </motion.div>
+              <UnderstandStage
+                task={task}
+                understandData={understandData}
+                milestones={milestones}
+                toggleMilestone={toggleMilestone}
+                isArchitectureOpen={isArchitectureOpen}
+                setIsArchitectureOpen={setIsArchitectureOpen}
+                isGlossaryOpen={isGlossaryOpen}
+                setIsGlossaryOpen={setIsGlossaryOpen}
+                setActiveStage={setActiveStage}
+              />
             )}
 
             {/* STAGE 2 CONTENT: LEARN THE CONCEPTS */}
             {activeStage === 'learn' && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-6"
-              >
-                {/* Stage Header */}
-                <div className="flex items-center gap-3 pb-2 border-b border-slate-800">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-xl">
-                    📚
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white tracking-tight">
-                      Stage 2: Learn the Concepts
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      Master core technologies, essential patterns, and avoid common beginner traps before building.
-                    </p>
-                  </div>
-                </div>
-
-                {/* 4 Learning Concept Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {learnConceptCards.map((card, idx) => {
-                    const IconComp = card.IconComponent;
-                    const isExpanded = !!expandedCards[card.id];
-
-                    return (
-                      <motion.div
-                        key={card.id}
-                        initial={{ opacity: 0, y: 15 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: idx * 0.08 }}
-                        className="glass-panel p-6 sm:p-7 rounded-3xl border border-slate-800/90 shadow-2xl flex flex-col justify-between hover:border-slate-700/80 transition-all group"
-                      >
-                        {/* Card Top Row */}
-                        <div className="space-y-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-2xl ${card.accentBg} ${card.accentBorder} border flex items-center justify-center ${card.iconColor} shrink-0`}>
-                                <IconComp className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <h3 className="text-base font-bold text-white tracking-tight group-hover:text-amber-200 transition-colors">
-                                  {card.tech}
-                                </h3>
-                                <span className="text-[10px] font-mono text-slate-400">
-                                  Prerequisite Concept #{idx + 1}
-                                </span>
-                              </div>
-                            </div>
-
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-[10px] font-mono font-medium text-amber-300 shrink-0">
-                              <Clock className="w-3 h-3 text-amber-400" />
-                              {card.readTime}
-                            </span>
-                          </div>
-
-                          {/* Purpose */}
-                          <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400/90">
-                              Purpose
-                            </div>
-                            <p className="text-xs text-slate-200 leading-relaxed">
-                              {card.purpose}
-                            </p>
-                          </div>
-
-                          {/* Why do we need it? */}
-                          <div className="space-y-1">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">
-                              Why Do We Need It?
-                            </div>
-                            <p className="text-xs text-slate-300 leading-relaxed">
-                              {card.whyNeeded}
-                            </p>
-                          </div>
-
-                          {/* Common Beginner Mistake */}
-                          <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/20 space-y-1">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              Common Beginner Mistake
-                            </div>
-                            <p className="text-xs text-red-200/90 leading-relaxed font-sans">
-                              {card.beginnerMistake}
-                            </p>
-                          </div>
-
-                          {/* Tiny Code Example */}
-                          <div className="space-y-1">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                              <Code2 className="w-3.5 h-3.5 text-purple-400" />
-                              Tiny Code Example
-                            </div>
-                            <pre className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-purple-300 overflow-x-auto leading-relaxed">
-                              <code>{card.tinyExample}</code>
-                            </pre>
-                          </div>
-                        </div>
-
-                        {/* Card Bottom */}
-                        <div className="pt-4 mt-5 border-t border-slate-800/80">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpandCard(card.id)}
-                            className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-all"
-                          >
-                            <span>{isExpanded ? 'Hide Advanced Explanation' : 'Learn More (Deep Dive)'}</span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4 text-amber-400" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-slate-400" />
-                            )}
-                          </button>
-
-                          <AnimatePresence>
-                            {isExpanded && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.25 }}
-                                className="mt-3 p-4 rounded-2xl bg-slate-950/80 border border-slate-800/90 space-y-2 text-xs text-slate-300 leading-relaxed"
-                              >
-                                <div className="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
-                                  Advanced Concept Notes
-                                </div>
-                                <p>{card.deepDive}</p>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </motion.div>
+              <LearnStage
+                learnConceptCards={learnConceptCards}
+                expandedCards={expandedCards}
+                toggleExpandCard={toggleExpandCard}
+                viewedCards={viewedCards}
+                isStage2Complete={isStage2Complete}
+                setActiveStage={setActiveStage}
+              />
             )}
 
-            {/* STAGE 3 CONTENT: BUILD YOUR PROJECT (SPRINT 3 IMPLEMENTATION) */}
+            {/* STAGE 3 CONTENT: BUILD YOUR PROJECT */}
             {activeStage === 'build' && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-6"
-              >
-                {/* Stage Header */}
-                <div className="flex items-center gap-3 pb-2 border-b border-slate-800">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl">
-                    🏗
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white tracking-tight">
-                      Stage 3: Build Your Project
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      Follow the 5-phase guided implementation roadmap to bring your solution to life step-by-step.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Build Progress Header Summary Card */}
-                <div className="glass-panel p-6 rounded-3xl border border-slate-800 shadow-xl space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-2">
-                      <Trophy className="w-5 h-5 text-emerald-400" />
-                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                        Build Progress
-                      </h3>
-                    </div>
-                    <span className="text-xs font-mono font-bold text-emerald-300 bg-emerald-500/10 px-3 py-1 rounded-xl border border-emerald-500/20">
-                      {buildProgressPercentage}% Completed
-                    </span>
-                  </div>
-
-                  {/* Build Progress Bar */}
-                  <div className="h-3 rounded-full bg-slate-950/80 border border-slate-800/90 overflow-hidden p-0.5">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${buildProgressPercentage}%` }}
-                      transition={{ duration: 0.6, ease: 'easeOut' }}
-                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-cyan-500 to-purple-500 shadow-md shadow-emerald-500/20"
-                    />
-                  </div>
-
-                  {/* Metrics Summary Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800/80 text-xs">
-                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/40 p-3 rounded-xl border border-slate-800/60">
-                      <CheckSquare className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <div>
-                        <span className="text-slate-400">Completed Phases: </span>
-                        <strong className="text-white font-mono">{completedBuildPhasesCount} of {totalBuildPhases}</strong>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/40 p-3 rounded-xl border border-slate-800/60">
-                      <Clock className="w-4 h-4 text-cyan-400 shrink-0" />
-                      <div>
-                        <span className="text-slate-400">Est. Remaining Time: </span>
-                        <strong className="text-white font-mono">~{remainingBuildTimeMins} Mins Remaining</strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5 Build Phase Cards Vertical Timeline */}
-                <div className="relative space-y-6 pl-4 sm:pl-8">
-                  {/* Timeline Vertical Guide Line */}
-                  <div className="absolute left-4 sm:left-8 top-6 bottom-6 w-0.5 bg-gradient-to-b from-emerald-500 via-cyan-500 to-slate-800 -translate-x-1/2 pointer-events-none" />
-
-                  {buildPhasesData.map((phase, idx) => {
-                    const isCompleted = !!completedPhases[phase.id];
-
-                    return (
-                      <motion.div
-                        key={phase.id}
-                        initial={{ opacity: 0, x: -15 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.35, delay: idx * 0.09 }}
-                        className="relative pl-6 sm:pl-8 group"
-                      >
-                        {/* Timeline Node Badge Icon */}
-                        <div
-                          className={`absolute left-0 top-6 w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold font-mono transition-all -translate-x-1/2 z-10 ${
-                            isCompleted
-                              ? 'bg-emerald-500 border-emerald-400 text-slate-950 shadow-md shadow-emerald-500/30'
-                              : 'bg-slate-900 border-cyan-500/50 text-cyan-300 ring-2 ring-cyan-500/20'
-                          }`}
-                        >
-                          {isCompleted ? <Check className="w-4 h-4 stroke-[3]" /> : phase.phaseNumber}
-                        </div>
-
-                        {/* Phase Glassmorphism Card */}
-                        <div
-                          className={`glass-panel p-6 sm:p-7 rounded-3xl border transition-all space-y-5 ${
-                            isCompleted
-                              ? 'bg-emerald-950/10 border-emerald-500/30 shadow-xl'
-                              : 'border-slate-800 hover:border-slate-700 shadow-2xl'
-                          }`}
-                        >
-                          {/* Phase Header */}
-                          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800/80 pb-4">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
-                                  Phase {phase.phaseNumber} of 5
-                                </span>
-                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border ${phase.difficultyColor}`}>
-                                  {phase.difficulty}
-                                </span>
-                              </div>
-                              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                                {phase.title}
-                              </h3>
-                            </div>
-
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-cyan-300">
-                              <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                              {phase.estTime}
-                            </span>
-                          </div>
-
-                          {/* Objective */}
-                          <div className="space-y-1">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                              Phase Objective
-                            </div>
-                            <p className="text-xs text-slate-200 leading-relaxed font-sans">
-                              {phase.objective}
-                            </p>
-                          </div>
-
-                          {/* Files Involved */}
-                          <div className="space-y-1.5">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-                              <FolderGit2 className="w-3.5 h-3.5" />
-                              Files Involved
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {phase.files.map((file) => (
-                                <span
-                                  key={file}
-                                  className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-purple-300 flex items-center gap-1"
-                                >
-                                  <FileText className="w-3 h-3 text-purple-400" />
-                                  {file}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Code Snippet */}
-                          <div className="space-y-1.5">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                              <Code2 className="w-3.5 h-3.5 text-cyan-400" />
-                              Snippet / Implementation Reference
-                            </div>
-                            <pre className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 text-[11px] font-mono text-cyan-300 overflow-x-auto leading-relaxed">
-                              <code>{phase.snippet}</code>
-                            </pre>
-                          </div>
-
-                          {/* Expected Outcome */}
-                          <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                              <Play className="w-3.5 h-3.5" />
-                              Expected Outcome
-                            </div>
-                            <p className="text-xs text-slate-300 leading-relaxed">
-                              {phase.outcome}
-                            </p>
-                          </div>
-
-                          {/* Phase Completion Checkbox */}
-                          <div className="pt-3 border-t border-slate-800/80">
-                            <button
-                              type="button"
-                              onClick={() => togglePhaseComplete(phase.id)}
-                              className={`w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all group active:scale-[0.99] ${
-                                isCompleted
-                                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200'
-                                  : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-emerald-500/40'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
-                                  isCompleted
-                                    ? 'bg-emerald-500 text-slate-950 font-bold'
-                                    : 'border-2 border-slate-700 group-hover:border-emerald-400'
-                                }`}>
-                                  {isCompleted && <Check className="w-4 h-4 stroke-[3]" />}
-                                </div>
-                                <span className="text-xs font-bold">
-                                  {isCompleted ? 'Phase Completed!' : 'Mark Phase as Completed'}
-                                </span>
-                              </div>
-
-                              <span className="text-[10px] font-mono text-slate-400">
-                                {isCompleted ? '✓ Verified' : 'Click to complete'}
-                              </span>
-                            </button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-
-                {/* SPRINT 3 BUILD COMPLETION BANNER */}
-                <AnimatePresence>
-                  {isBuildComplete && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.96, y: 12 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.96, y: -12 }}
-                      transition={{ duration: 0.4 }}
-                      className="p-6 sm:p-8 rounded-3xl glass-panel border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-purple-500/10 to-slate-950 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-300 text-2xl shrink-0">
-                          🎉
-                        </div>
-                        <div className="space-y-0.5">
-                          <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                            Build Complete!
-                          </h3>
-                          <p className="text-xs text-slate-300 leading-relaxed">
-                            Your project is ready for deployment. You've completed all 5 implementation phases!
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setActiveStage('improve')}
-                        className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/25 transition-all flex items-center gap-2 shrink-0 active:scale-95 cursor-pointer"
-                      >
-                        <span>Continue to Improve</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+              <BuildStage
+                buildPhasesData={buildPhasesData}
+                completedPhases={completedPhases}
+                togglePhaseComplete={togglePhaseComplete}
+                completedBuildPhasesCount={completedBuildPhasesCount}
+                totalBuildPhases={totalBuildPhases}
+                buildProgressPercentage={buildProgressPercentage}
+                remainingBuildTimeMins={remainingBuildTimeMins}
+                isBuildComplete={isBuildComplete}
+                setActiveStage={setActiveStage}
+              />
             )}
 
-            {/* STAGE 4 CONTENT: PROFESSIONAL POLISH (SPRINT 4 IMPLEMENTATION) */}
+            {/* STAGE 4 CONTENT: PROFESSIONAL POLISH */}
             {activeStage === 'improve' && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-6"
-              >
-                {/* Stage Header */}
-                <div className="flex items-center gap-3 pb-2 border-b border-slate-800">
-                  <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 text-xl">
-                    🚀
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white tracking-tight">
-                      Stage 4: Professional Polish
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      Learn how senior software engineers optimize, secure, test, and audit projects before production deployment.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Professional Polish Progress Header Card */}
-                <div className="glass-panel p-6 rounded-3xl border border-slate-800 shadow-xl space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-2">
-                      <ShieldCheck className="w-5 h-5 text-purple-400" />
-                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                        Professional Polish Progress
-                      </h3>
-                    </div>
-                    <span className="text-xs font-mono font-bold text-purple-300 bg-purple-500/10 px-3 py-1 rounded-xl border border-purple-500/20">
-                      {improveProgressPercentage}% Polish Completed
-                    </span>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="h-3 rounded-full bg-slate-950/80 border border-slate-800/90 overflow-hidden p-0.5">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${improveProgressPercentage}%` }}
-                      transition={{ duration: 0.6, ease: 'easeOut' }}
-                      className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-500 to-emerald-400 shadow-md shadow-purple-500/20"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800/80 text-xs">
-                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/40 p-3 rounded-xl border border-slate-800/60">
-                      <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
-                      <div>
-                        <span className="text-slate-400">Completed Improvements: </span>
-                        <strong className="text-white font-mono">{completedImproveCount} of {totalImproveCards} Cards</strong>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/40 p-3 rounded-xl border border-slate-800/60">
-                      <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
-                      <div>
-                        <span className="text-slate-400">Overall Project Readiness: </span>
-                        <strong className="text-emerald-300 font-mono">
-                          {isAllImproveCompleted ? '100% Production Ready' : `${progressPercentage}% In Progress`}
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5 IMPROVEMENT CARDS */}
-                <div className="space-y-6">
-                  {improvementCards.map((card, idx) => {
-                    const isCompleted = !!completedImproveCards[card.id];
-                    const isExpanded = !!expandedTips[card.id];
-                    const IconComponent = card.IconComponent || Zap;
-
-                    return (
-                      <motion.div
-                        key={card.id}
-                        initial={{ opacity: 0, y: 15 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: idx * 0.08 }}
-                        className="glass-panel p-6 sm:p-7 rounded-3xl border border-slate-800 shadow-2xl space-y-5"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-2xl ${card.accentBg} border ${card.accentBorder} flex items-center justify-center ${card.iconColor} shrink-0`}>
-                              <IconComponent className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <h3 className="text-base font-bold text-white tracking-tight">
-                                {idx + 1}. {card.title}
-                              </h3>
-                              <p className="text-xs text-slate-400">{card.category || 'Quality Audit'}</p>
-                            </div>
-                          </div>
-                          <span className={`px-3 py-1 rounded-full ${card.accentBg} ${card.iconColor} border ${card.accentBorder} text-xs font-mono font-semibold`}>
-                            {card.category || 'Quality Audit'}
-                          </span>
-                        </div>
-
-                        {/* Why Needed */}
-                        <div className="space-y-1.5">
-                          <div className={`text-[11px] font-bold uppercase tracking-wider ${card.iconColor}`}>
-                            Why This Improvement Matters
-                          </div>
-                          <p className="text-xs text-slate-300 leading-relaxed font-sans">
-                            {card.whyNeeded}
-                          </p>
-                        </div>
-
-                        {/* Tips Array */}
-                        <div className="space-y-2">
-                          <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">Optimization Checklist & Guidance</div>
-                          <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-300">
-                            {card.tips.map((tip, tipIdx) => (
-                              <li key={tipIdx} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
-                                <strong className="text-cyan-300 block font-mono">Tip {tipIdx + 1}</strong>
-                                <span>{tip}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        {/* Beginner Mistake */}
-                        <div className="p-3.5 rounded-xl bg-red-500/5 border border-red-500/20 space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
-                            <ZapOff className="w-3.5 h-3.5" />
-                            Common Beginner Mistake
-                          </div>
-                          <p className="text-xs text-red-200/90 leading-relaxed font-sans">
-                            {card.beginnerMistake}
-                          </p>
-                        </div>
-
-                        {/* Professional Tip Accordion */}
-                        <div className="pt-2 border-t border-slate-800/80">
-                          <button
-                            type="button"
-                            onClick={() => toggleTipExpand(card.id)}
-                            className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-all"
-                          >
-                            <span>💡 Senior Engineer Pro Tip (Expand)</span>
-                            {isExpanded ? <ChevronUp className={`w-4 h-4 ${card.iconColor}`} /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                          </button>
-                          <AnimatePresence>
-                            {isExpanded && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="mt-3 p-4 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300 leading-relaxed font-sans"
-                              >
-                                "{card.proTip}"
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-
-                        {/* Card Completion Checkbox */}
-                        <button
-                          type="button"
-                          onClick={() => toggleImproveCardComplete(card.id)}
-                          className={`w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all ${
-                            isCompleted
-                              ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200'
-                              : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-emerald-500/40'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-5 h-5 rounded-md flex items-center justify-center ${isCompleted ? 'bg-emerald-500 text-slate-950' : 'border border-slate-700'}`}>
-                              {isCompleted && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                            </div>
-                            <span className="text-xs font-bold">
-                              {isCompleted ? `${card.title} Verified` : `Mark ${card.title} as Verified`}
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono text-slate-400">
-                            {isCompleted ? '✓ Completed' : 'Click to complete'}
-                          </span>
-                        </button>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-
-                {/* CELEBRATION SECTION & DEVELOPER REPORT CARD */}
-                <AnimatePresence>
-                  {isAllImproveCompleted && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.96, y: 15 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.96, y: -15 }}
-                      transition={{ duration: 0.4 }}
-                      className="glass-panel p-8 sm:p-10 rounded-3xl border border-purple-500/40 bg-gradient-to-br from-purple-500/10 via-cyan-500/10 to-slate-950 shadow-2xl space-y-8 relative overflow-hidden"
-                    >
-                      <div className="absolute -top-32 -right-32 w-80 h-80 bg-purple-500/20 blur-3xl rounded-full pointer-events-none" />
-
-                      {/* Header Message */}
-                      <div className="text-center space-y-2 max-w-xl mx-auto">
-                        <div className="w-16 h-16 rounded-3xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 text-3xl mx-auto shadow-lg shadow-purple-500/20">
-                          🎉
-                        </div>
-                        <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                          Blueprint Complete
-                        </h2>
-                        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
-                          Congratulations! You have successfully completed every stage of your project blueprint — from mental model to production readiness.
-                        </p>
-                      </div>
-
-                      {/* DEVELOPER REPORT CARD UI */}
-                      <div className="p-6 sm:p-8 rounded-3xl bg-slate-950/80 border border-slate-800 space-y-6">
-                        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                          <div className="flex items-center gap-2.5">
-                            <Trophy className="w-5 h-5 text-amber-400" />
-                            <h3 className="text-base font-bold text-white tracking-tight">
-                              Developer Report Card
-                            </h3>
-                          </div>
-                          <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-xs font-mono font-bold">
-                            Overall Readiness: 97% Production Ready
-                          </span>
-                        </div>
-
-                        {/* Score Breakdown Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1 text-center">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">1. Planning</div>
-                            <div className="text-xl font-extrabold text-cyan-300 font-mono">98 / 100</div>
-                            <span className="inline-block text-[10px] font-mono text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded">Grade A+</span>
-                          </div>
-
-                          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1 text-center">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">2. Learning</div>
-                            <div className="text-xl font-extrabold text-amber-300 font-mono">95 / 100</div>
-                            <span className="inline-block text-[10px] font-mono text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded">Grade A</span>
-                          </div>
-
-                          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1 text-center">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">3. Implementation</div>
-                            <div className="text-xl font-extrabold text-purple-300 font-mono">96 / 100</div>
-                            <span className="inline-block text-[10px] font-mono text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded">Grade A+</span>
-                          </div>
-
-                          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1 text-center">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">4. Professional Practices</div>
-                            <div className="text-xl font-extrabold text-emerald-300 font-mono">100 / 100</div>
-                            <span className="inline-block text-[10px] font-mono text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded">Grade S (Master)</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* RECOMMENDED NEXT CHALLENGE PLACEHOLDER CARD */}
-                      <div className="p-6 rounded-3xl bg-slate-950/90 border border-cyan-500/20 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs uppercase tracking-wider">
-                            <Rocket className="w-4 h-4" />
-                            🚀 Recommended Next Challenge
-                          </div>
-                          <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-mono font-semibold">
-                            Coming Soon
-                          </span>
-                        </div>
-                        <h4 className="text-base font-bold text-white tracking-tight">
-                          Build a Microservice Message Queue with Redis & RabbitMQ
-                        </h4>
-                        <p className="text-xs text-slate-400 leading-relaxed">
-                          Take your software engineering skills to the next tier by building an asynchronous message bus with worker thread retries and dead-letter queues.
-                        </p>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+              <ImproveStage
+                improvementCards={improvementCards}
+                completedImproveCards={completedImproveCards}
+                toggleImproveCardComplete={toggleImproveCardComplete}
+                expandedTips={expandedTips}
+                toggleTipExpand={toggleTipExpand}
+                deployChecklist={deployChecklist}
+                toggleDeployChecklistItem={toggleDeployChecklistItem}
+                completedImproveCount={completedImproveCount}
+                totalImproveCards={totalImproveCards}
+                improveProgressPercentage={improveProgressPercentage}
+                progressPercentage={progressPercentage}
+                isAllImproveCompleted={isAllImproveCompleted}
+              />
             )}
+
+            {/* STUDENT SKILL TREE & ACHIEVEMENTS PANEL */}
+            <div className="pt-6 border-t border-slate-800/80">
+              <AchievementsPanel />
+            </div>
           </motion.div>
         )}
       </main>
+
+      {/* Achievement Unlocked Toast Notification */}
+      <AchievementUnlockedToast
+        badge={unlockedBadgeToast}
+        onClose={() => setUnlockedBadgeToast(null)}
+      />
+
+      {/* Floating Ask Hive AI Mentor Button */}
+      {!loading && !error && task && (
+        <button
+          type="button"
+          onClick={() => setIsAskHiveOpen(true)}
+          className="fixed bottom-6 right-6 z-40 px-5 py-3 rounded-full bg-gradient-to-r from-purple-600 via-cyan-600 to-emerald-500 hover:from-purple-500 hover:to-emerald-400 text-white font-bold text-xs shadow-2xl shadow-purple-600/40 border border-white/20 transition-all flex items-center gap-2.5 hover:scale-105 active:scale-95 cursor-pointer group"
+        >
+          <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-sm group-hover:rotate-12 transition-transform">
+            💬
+          </div>
+          <span>Ask Hive</span>
+          <span className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse" />
+        </button>
+      )}
+
+      {/* Ask Hive AI Mentor Modal */}
+      <AskHiveModal
+        isOpen={isAskHiveOpen}
+        onClose={() => setIsAskHiveOpen(false)}
+        task={task}
+        activeStage={activeStage}
+        token={token}
+      />
     </div>
   );
 }
-

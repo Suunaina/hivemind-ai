@@ -8,6 +8,11 @@ import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import WorkspacePage from './pages/WorkspacePage';
 import TaskHistoryPage from './pages/TaskHistoryPage';
+import ProtectedAdminRoute from './components/admin/ProtectedAdminRoute';
+import AdminDashboardPage from './pages/admin/AdminDashboardPage';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminUserDetailPage from './pages/admin/AdminUserDetailPage';
+import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 
 export default function App() {
   return (
@@ -20,7 +25,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
 
-            {/* Protected Routes */}
+            {/* Protected Student Routes */}
             <Route
               path="/dashboard"
               element={
@@ -59,6 +64,48 @@ export default function App() {
                 <ProtectedRoute>
                   <TaskHistoryPage />
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/history/:id"
+              element={
+                <ProtectedRoute>
+                  <TaskHistoryPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Protected Read-Only Admin Portal Routes */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedAdminRoute>
+                  <AdminDashboardPage />
+                </ProtectedAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedAdminRoute>
+                  <AdminUsersPage />
+                </ProtectedAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/users/:userId"
+              element={
+                <ProtectedAdminRoute>
+                  <AdminUserDetailPage />
+                </ProtectedAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/analytics"
+              element={
+                <ProtectedAdminRoute>
+                  <AdminAnalyticsPage />
+                </ProtectedAdminRoute>
               }
             />
           </Routes>

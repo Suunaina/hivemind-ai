@@ -8,9 +8,10 @@ import { runReviewerAgent } from './reviewerAgent.js';
  * Planner -> Researcher -> Developer -> Reviewer
  * 
  * @param {string} userPrompt - Task prompt submitted by the user.
- * @returns {Promise<{ planner: string, researcher: string, developer: string, reviewer: string }>}
+ * @param {string} experienceLevel - Student experience level ('Beginner', 'Intermediate', 'Advanced').
+ * @returns {Promise<{ planner: string, researcher: string, developer: string, reviewer: string, blueprint: object }>}
  */
-export const runAgents = async (userPrompt) => {
+export const runAgents = async (userPrompt, experienceLevel = 'Intermediate') => {
   if (!userPrompt || typeof userPrompt !== 'string') {
     throw new Error('A valid user task prompt is required to run the AI Swarm.');
   }
@@ -23,8 +24,8 @@ export const runAgents = async (userPrompt) => {
 
   // 1. Planner Execution
   try {
-    console.log('🧠 Planner started...');
-    const plannerResult = await runPlannerAgent(userPrompt);
+    console.log('🧠 Planner started with experience level:', experienceLevel);
+    const plannerResult = await runPlannerAgent(userPrompt, experienceLevel);
     planner = typeof plannerResult === 'string' ? plannerResult : plannerResult.plannerOutput;
     blueprint = typeof plannerResult === 'object' ? plannerResult.blueprint : null;
     console.log('✅ Planner completed');

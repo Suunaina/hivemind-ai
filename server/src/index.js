@@ -6,6 +6,8 @@ import authRoutes from './routes/authRoutes.js';
 import workspaceRoutes from './routes/workspaceRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
+import achievementRoutes from './routes/achievementRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 dotenv.config();
 
@@ -45,6 +47,10 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/v1/tasks', taskRoutes);
 app.use('/api/v1/workspaces', workspaceRoutes);
 app.use('/api/v1/agents', agentRoutes);
+app.use('/api/v1/achievements', achievementRoutes);
+app.use('/api/achievements', achievementRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Global Error Handler
 app.use((err, req, res, _next) => {

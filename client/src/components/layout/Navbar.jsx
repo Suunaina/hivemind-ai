@@ -26,15 +26,8 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Desktop Links */}
-        <nav className="hidden md:flex items-center gap-8">
-          <a href="#features" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">
-            Features
-          </a>
-          <a href="#about" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">
-            About
-          </a>
-        </nav>
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-8"></nav>
 
         {/* Auth CTA Actions */}
         <div className="hidden md:flex items-center gap-4">

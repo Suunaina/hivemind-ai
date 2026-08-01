@@ -36,6 +36,15 @@ const taskSchema = new mongoose.Schema(
     blueprint: {
       type: mongoose.Schema.Types.Mixed,
       default: null
+    },
+    experienceLevel: {
+      type: String,
+      enum: ['Beginner', 'Intermediate', 'Advanced'],
+      default: 'Intermediate'
+    },
+    progressState: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
     }
   },
   {

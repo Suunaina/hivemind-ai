@@ -9,13 +9,21 @@ const api = axios.create({
   }
 });
 
-export const createTask = async (prompt, token) => {
+export const createTask = async (prompt, experienceLevel = 'Intermediate', token) => {
+  // Support legacy call signature if token is passed as 2nd arg
+  let finalLevel = experienceLevel;
+  let finalToken = token;
+  if (typeof experienceLevel === 'string' && !['Beginner', 'Intermediate', 'Advanced'].includes(experienceLevel)) {
+    finalToken = experienceLevel;
+    finalLevel = 'Intermediate';
+  }
+
   const response = await api.post(
     '/v1/tasks',
-    { prompt },
+    { prompt, experienceLevel: finalLevel },
     {
       headers: {
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${finalToken}`
       }
     }
   );
@@ -37,5 +45,53 @@ export const getTaskById = async (id, token) => {
       Authorization: `Bearer ${token}`
     }
   });
+  return response.data;
+};
+
+export const askMentor = async (taskId, { question, stage }, token) => {
+  const response = await api.post(
+    `/v1/tasks/${taskId}/mentor`,
+    { question, stage },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+  return response.data;
+};
+
+export const getAchievements = async (token) => {
+  const response = await api.get('/v1/achievements', {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return response.data;
+};
+
+export const unlockAchievement = async (badgeId, token) => {
+  const response = await api.post(
+    '/v1/achievements/unlock',
+    { badgeId },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+  return response.data;
+};
+
+export const updateTaskProgress = async (taskId, progressState, token) => {
+  const response = await api.patch(
+    `/v1/tasks/${taskId}/progress`,
+    { progressState },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
   return response.data;
 };

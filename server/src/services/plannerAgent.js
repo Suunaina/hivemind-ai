@@ -169,19 +169,33 @@ Make sure ALL data is strictly tailored to the specific user task prompt provide
 /**
  * Runs the Planner Agent to decompose a task into a structured plan and JSON blueprint.
  * @param {string} userTask - The original user prompt or task specification.
+ * @param {string} experienceLevel - Student's experience level ('Beginner', 'Intermediate', 'Advanced').
  * @returns {Promise<{ plannerOutput: string, blueprint: object }>} Detailed markdown and structured JSON blueprint.
  */
-export const runPlannerAgent = async (userTask) => {
+export const runPlannerAgent = async (userTask, experienceLevel = 'Intermediate') => {
   if (!userTask || typeof userTask !== 'string') {
     throw new Error('Planner Agent requires a valid user task prompt string.');
   }
 
+  const level = ['Beginner', 'Intermediate', 'Advanced'].includes(experienceLevel)
+    ? experienceLevel
+    : 'Intermediate';
+
+  const levelInstructions = level === 'Beginner'
+    ? 'STUDENT LEVEL: BEGINNER. Explain every concept clearly, use analogies, avoid unnecessary jargon, use small code examples, and highlight common beginner mistakes.'
+    : level === 'Advanced'
+    ? 'STUDENT LEVEL: ADVANCED. Skip basic fundamentals. Focus heavily on scalability, performance optimization, security hardening, design patterns, and production-ready advice.'
+    : 'STUDENT LEVEL: INTERMEDIATE. Assume basic programming knowledge, focus on architecture decisions, explain design trade-offs, and provide clean modular examples.';
+
   const userPrompt = `Task Specification:
 ${userTask}
 
-Please create a detailed step-by-step technical plan for this task.`;
+Target Student Level: ${level}
+Instructions: ${levelInstructions}
 
-  // 1. Generate existing markdown plannerOutput (unchanged for backwards compatibility)
+Please create a detailed step-by-step technical plan tailored to this student level.`;
+
+  // 1. Generate existing markdown plannerOutput
   const plannerOutput = await generateContent(PLANNER_SYSTEM_PROMPT, userPrompt);
 
   // 2. Generate structured Project Blueprint JSON object
@@ -189,12 +203,15 @@ Please create a detailed step-by-step technical plan for this task.`;
   try {
     const rawJson = await generateContent(
       BLUEPRINT_SYSTEM_PROMPT,
-      `Project Task Specification:\n${userTask}`,
+      `Project Task Specification:\n${userTask}\n\nStudent Experience Level: ${level}\n${levelInstructions}\nSet snapshot.difficulty to "${level} Level".`,
       { responseMimeType: 'application/json' }
     );
 
     const cleanJsonStr = rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
     blueprint = JSON.parse(cleanJsonStr);
+    if (blueprint && blueprint.snapshot) {
+      blueprint.snapshot.difficulty = `${level} Level`;
+    }
   } catch (err) {
     console.error('⚠️ Failed to generate structured Blueprint JSON:', err.message);
     blueprint = null;
