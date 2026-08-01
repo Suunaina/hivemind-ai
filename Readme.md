@@ -24,3 +24,25 @@ HiveMind AI is an AI-powered project learning platform that helps developers tra
 - 🔐 Secure JWT authentication
 - 👨‍💼 Role-based Admin Dashboard
 - 📱 Fully responsive modern UI with glassmorphism
+
+## 🛠️ Tech Stack
+
+### Frontend
+- React 19
+- Vite
+- Tailwind CSS
+- Framer Motion
+- React Router
+- Axios
+
+### Backend
+- Node.js
+- Express.js
+- MongoDB Atlas
+- JWT Authentication
+- Gemini API
+
+### Deployment
+- Vercel (Frontend)
+- Render (Backend)
+- MongoDB Atlas (Database)
