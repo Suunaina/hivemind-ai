@@ -267,7 +267,7 @@ hivemind-ai/
 **Sunaina**
 
 - GitHub: https://github.com/Suunaina
-- LinkedIn: *(Add your LinkedIn profile URL)*
+- LinkedIn: https://www.linkedin.com/in/sunainaravi/
 
 ---
 
